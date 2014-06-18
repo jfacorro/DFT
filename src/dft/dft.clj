@@ -11,8 +11,8 @@
         y (:img c)]
     (Math/sqrt (+ (* x x) (* y y)))))
 
-(defn to-polar [c]
-  {:arg (arg c) :mod (modulus c)})
+(defn to-polar [{:keys [k] :as c}]
+  {:arg (arg c) :mod (modulus c) :k k})
 
 (def PI*2 (* 2 (Math/PI)))
 
@@ -22,29 +22,33 @@
 
 (defn term-k-t [n k x t]
   (let [phi (- (/ (* PI*2 k t) n))]
-    (Complex. (* x (Math/cos phi)) 
+    (Complex. (* x (Math/cos phi))
               (* x (Math/sin phi)))))
 
 (defn term-k-sum [n xt k]
-  (reduce +-complex (map (partial term-k-t n k) xt (range n))))
+  (-> (reduce +-complex
+        (map (partial term-k-t n k) xt (range n)))
+    (assoc :k (inc k))))
 
-(defn dft [f begin end n]
+(defn dft
+  "Takes a function f, an interval between begin and end; and
+  a number of sampling points to extract from that interval. Returns
+  the discrete components for f in the interval specified."
+  [f begin end n]
   (let [delta (/ (- end begin) n)
         t     (range begin end delta)
         xt    (map f t)]
-    (map (partial term-k-sum n xt) (range n))))
+    (map (partial term-k-sum n xt)
+         (range n))))
 
-(defn normalize [N x]
-  (assoc x :mod  (/ (:mod x) (Math/sqrt N))))
-
-(defn freq [i N])
-
-(defn build-original-fn [Xk]
-  (letfn [(normalize [x]
-            (assoc x :mod  (/ (:mod x) (Math/sqrt (count Xk)))))]
-    (map (comp normalize to-polar) Xk)))
-
-(-> #(Math/sin %)
-    (dft 0 Math/PI 10)
-    build-original-fn
-    p/pprint)
+(defn build-original-fn
+  "Given the DFT decomposition returns a function
+  with the same mapping as the original in the "
+  [Xk]
+  (let [n         (count Xk)
+        normalize #(update-in % [:mod] / n)
+        Xk        (map (comp normalize to-polar) Xk)]
+    (fn [t]
+      (reduce (fn [r {:keys [mod arg k]}]
+                  (+ r (* mod (Math/sin (+ arg (/ (* PI*2 t k) n))))))
+              0 Xk))))
